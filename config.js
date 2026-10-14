@@ -6,8 +6,8 @@
 // Both are safe to publish: they only let the browser call the training server, which checks
 // every request itself. NEVER put the secret / service_role key here.
 window.BTW_CONFIG = {
-  supabaseUrl: 'https://YOUR-PROJECT.supabase.co',
-  publishableKey: 'PASTE-YOUR-PUBLISHABLE-KEY',
+  supabaseUrl: 'https://fabrxzzfkpavumypcfpn.supabase.co',
+  publishableKey: 'sb_publishable_zDeFfNxVds207TGvTKYbow_vNz0ZthY',
   // Optional: the site address used in certificate QR codes, e.g. 'https://btw-sa.github.io/training/'
   siteUrl: ''
 };

@@ -1,0 +1,12 @@
+# Supabase CLI settings — only needed if you deploy with the Supabase CLI instead of the dashboard.
+project_id = "btw-training"
+
+[api]
+schemas = ["public"]
+
+[db]
+major_version = 15
+
+# The one server function. It checks its own signed sessions, so Supabase's JWT check is off.
+[functions.btw-api]
+verify_jwt = false

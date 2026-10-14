@@ -1,0 +1,31 @@
+# dependencies and builds
+node_modules/
+web/dist/
+site/
+.dev-data/
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+supabase/.env
+supabase/.temp/
+supabase/.branches/
+
+# data — staff records, exports and backups never belong in git
+*.csv
+!web/test/fixtures/*.csv
+*.xlsx
+*.dump
+*.sql.gz
+backups/
+exports/
+# product card PDFs live in Supabase Storage, not in git
+*.pdf
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/

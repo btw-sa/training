@@ -1,0 +1,25 @@
+{
+  "name": "btw-training-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BTW staff training platform: product cards, quizzes, certificates, dashboards. GitHub Pages frontend, one Supabase Edge Function + database.",
+  "scripts": {
+    "build": "node scripts/build-prototype.js && node scripts/build-function.js",
+    "test:engine": "node --test web/test/core.test.js",
+    "test:server": "node --test web/test/server.test.js",
+    "test:db": "node --test supabase/tests/setup.test.js",
+    "test:edge": "node scripts/build-function.js && node --test web/test/edge-function.test.js",
+    "test": "npm run test:engine && npm run test:server && npm run test:db",
+    "dev": "node scripts/dev-server.js",
+    "smoke": "python3 web/test/smoke_test.py . /tmp/shots"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.2.17",
+    "jspdf": "2.5.1",
+    "pdfjs-dist": "^3.11.174",
+    "qrcode-generator": "1.4.4"
+  }
+}

@@ -298,7 +298,7 @@ PAGES.courseEdit = () => {
   const v = api.getCourseManage(S.userId, S.route.courseId);
   const c = v.course;
   const ro = !v.canEdit;
-  const secs = v.sections.map((s, i) => `<div class="li"><span class="sec-n">${fmtNum(i + 1)}</span><span class="grow"><b>${esc(L(s.title))}</b><div class="small muted">${esc(t('cards_n', { n: fmtNum(s.files.length) }))} · ${s.exam ? t('has_quiz') + ` (${fmtNum(s.exam.questions.length)})` : t('no_quiz')}${s.required ? '' : ' · ' + t('optional')}</div></span>
+  const secs = v.sections.map((s, i) => `<div class="li"><span class="sec-n">${fmtNum(i + 1)}</span><span class="grow"><b>${esc(L(s.title))}</b><div class="small muted">${esc(t('cards_n', { n: fmtNum(s.files.length) }))} · ${s.exam ? t('has_quiz') + ` (${fmtNum(s.exam.questions.length)})` : t('no_quiz')}${s.required ? '' : ' · ' + t('optional')}${s.skill ? ' · ' + t('has_skill') : ''}</div></span>
       <div class="row" style="gap:4px">${v.canEdit ? `${btn('', 'moveSection', { sm: true, kind: 'ghost', icon: 'up', aria: t('move_up'), data: { section: s.id, dir: -1 }, disabled: i === 0 })}${btn('', 'moveSection', { sm: true, kind: 'ghost', icon: 'down', aria: t('move_down'), data: { section: s.id, dir: 1 }, disabled: i === v.sections.length - 1 })}` : ''}${btn(ro && !v.canFiles && !v.canExams ? t('view') : t('edit'), 'go', { sm: true, data: { r: 'sectionEdit', 'section-id': s.id }, icon: 'chev' })}</div></div>`).join('');
   const versions = v.versions.length ? `<div class="list">${v.versions.map(x => `<div class="li"><span class="pill accent">v${fmtNum(x.version)}</span><span class="grow"><b>${esc(x.note || '—')}</b><div class="small muted">${esc(userName(x.publishedBy))} · ${esc(fmtDate(x.publishedAt))} · ${x.retrain ? t('retrain_yes') : t('retrain_no')}</div></span></div>`).join('')}</div>` : `<p class="small muted">${t('st_draft')}</p>`;
   const publishBox = c.version === 0
@@ -354,6 +354,10 @@ PAGES.sectionEdit = () => {
       ${field(t('section_title_en'), input('en', s.title.en, { dir: 'ltr', disabled: ro }))}${field(t('section_title_ar'), input('ar', s.title.ar, { dir: 'rtl', disabled: ro }))}
       ${field(t('intro_en'), textarea('ien', s.intro.en, { dir: 'ltr', disabled: ro }))}${field(t('intro_ar'), textarea('iar', s.intro.ar, { dir: 'rtl', disabled: ro }))}</div>
       ${checkbox('required', s.required, t('required_section'), { disabled: ro })}
+      ${checkbox('hasSkill', !!s.skill, `<b>${t('section_has_skill')}</b><br><span class="small muted">${t('section_has_skill_hint')}</span>`, { disabled: ro })}
+      <div class="form-grid">
+        ${field(t('skill_title_en'), input('ken', s.skill ? s.skill.title.en : '', { dir: 'ltr', disabled: ro, ph: s.title.en }))}${field(t('skill_title_ar'), input('kar', s.skill ? s.skill.title.ar : '', { dir: 'rtl', disabled: ro, ph: s.title.ar }))}
+        ${field(t('skill_desc_en'), textarea('kden', s.skill ? s.skill.desc.en : '', { dir: 'ltr', disabled: ro }))}${field(t('skill_desc_ar'), textarea('kdar', s.skill ? s.skill.desc.ar : '', { dir: 'rtl', disabled: ro }))}</div>
       <div class="row">${ro ? '' : btn(t('save'), null, { type: 'submit', kind: 'primary' })}${gbtn('content.edit', { courseId: v.course.id }, t('remove'), 'removeSection', { data: { section: s.id }, kind: 'danger', icon: 'trash' })}</div></form>
     <section class="stack"><div class="row between"><div><h2>${t('product_cards')}</h2><p class="small muted">${t('cards_editor_hint')}</p></div>${gbtn('files.manage', { courseId: v.course.id }, t('upload_cards'), 'pickCards', { data: { section: s.id }, icon: 'upload', kind: 'primary' })}</div>
       <input type="file" id="card-files" accept="application/pdf,.pdf" multiple hidden data-on-change="cardFiles" data-section="${esc(s.id)}">
@@ -361,7 +365,7 @@ PAGES.sectionEdit = () => {
     <section class="card row between"><div><span class="eyebrow">${t('quiz')}</span><h3>${s.exam ? `${esc(L(s.exam.title))} · ${fmtNum(s.exam.questions.length)} · ${fmtPct(s.exam.passPct)}` : t('no_quiz')}</h3></div>${gbtn('exams.manage', { courseId: v.course.id }, s.exam ? t('edit') : t('add'), 'go', { data: { r: 'examEdit', 'course-id': v.course.id, 'section-id': s.id }, icon: 'edit' })}</section>
   </div>`;
 };
-F.sectionDetails = async d => { if (await call(() => api.saveSection(S.userId, { id: S.route.sectionId, title: { en: d.en, ar: d.ar }, intro: { en: d.ien, ar: d.iar }, required: !!d.required }), t('saved'))) render(); };
+F.sectionDetails = async d => { if (await call(() => api.saveSection(S.userId, { id: S.route.sectionId, title: { en: d.en, ar: d.ar }, intro: { en: d.ien, ar: d.iar }, required: !!d.required, skill: { enabled: !!d.hasSkill, title: { en: d.ken || '', ar: d.kar || '' }, desc: { en: d.kden || '', ar: d.kdar || '' } } }), t('saved'))) render(); };
 A.removeSection = d => openModal('confirm', { title: t('remove'), body: t('remove_section_q'), danger: true, ok: t('remove'), onOk: async () => { const cid = db.sections.find(x => x.id === d.section).courseId; if (await call(() => api.removeSection(S.userId, d.section), t('deleted'))) { closeModal(); go('courseEdit', { courseId: cid }); } } });
 A.moveFile = async d => { if (await call(() => api.moveFile(S.userId, d.file, Number(d.dir)))) render(); };
 A.removeFile = async d => { if (await call(() => api.removeFile(S.userId, d.file), t('file_removed'))) render(); };

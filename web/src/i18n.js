@@ -407,6 +407,13 @@
     replace: ['Replace', 'استبدال'],
     file_removed: ['Card removed.', 'أزيلت البطاقة.'],
     required_section: ['Required for completion', 'مطلوب للإكمال'],
+    section_has_skill: ['This section has a practical skill', 'هذا القسم فيه مهارة عملية'],
+    section_has_skill_hint: ['A manager watches the person do it on shift and signs it off before the course is complete.', 'يشاهد المدير الموظف وهو يطبّقها أثناء الوردية ويعتمدها قبل اكتمال الدورة.'],
+    skill_title_en: ['Skill name (English) — leave empty to use the section title', 'اسم المهارة (إنجليزي) — اتركه فارغًا لاستخدام عنوان القسم'],
+    skill_title_ar: ['Skill name (Arabic) — leave empty to use the section title', 'اسم المهارة (عربي) — اتركه فارغًا لاستخدام عنوان القسم'],
+    skill_desc_en: ['What the manager checks (English)', 'ما يتحقق منه المدير (إنجليزي)'],
+    skill_desc_ar: ['What the manager checks (Arabic)', 'ما يتحقق منه المدير (عربي)'],
+    has_skill: ['Practical skill', 'مهارة عملية'],
 
     // exam editor
     exam_editor: ['Quiz builder', 'منشئ الاختبار'],

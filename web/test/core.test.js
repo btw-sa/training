@@ -554,3 +554,50 @@ test('password hashing can be supplied by the server (stronger hashes, same rule
   assert.equal(api.login('B-1', 'Mine2026x').mustChange, false);
   assert.deepEqual(made, ['10203040', 'Temp2026x', 'Mine2026x']);
 });
+
+test('a section can carry a practical skill that the course then requires', () => {
+  const { api, db } = fresh();
+  const s = api.saveSection('u1', { courseId: 'c4', title: { en: 'Latte art', ar: 'لاتيه آرت' }, skill: { enabled: true, desc: { en: 'Pours a heart', ar: 'يصب قلبًا' } } });
+  const k = db.skills.find(x => x.sectionId === s.id);
+  assert.ok(k, 'skill created');
+  assert.equal(k.courseId, 'c4');
+  assert.equal(k.title.en, 'Latte art');           // falls back to the section title
+  assert.equal(k.requiresSignoff, true);
+  assert.equal(api.getCourseManage('u1', 'c4').sections.find(x => x.id === s.id).skill.id, k.id);
+  // Renaming updates the same skill, never a second one.
+  api.saveSection('u1', { id: s.id, skill: { enabled: true, title: { en: 'Rosetta', ar: 'روزيتا' } } });
+  assert.equal(db.skills.filter(x => x.sectionId === s.id).length, 1);
+  assert.equal(db.skills.find(x => x.sectionId === s.id).title.ar, 'روزيتا');
+  // Turning it off removes it while nobody has a sign-off.
+  api.saveSection('u1', { id: s.id, skill: { enabled: false } });
+  assert.equal(db.skills.filter(x => x.sectionId === s.id).length, 0);
+  // Saving without a skill field leaves the skill untouched.
+  api.saveSection('u1', { id: s.id, skill: { enabled: true } });
+  api.saveSection('u1', { id: s.id, title: { en: 'Latte art 2' } });
+  assert.equal(db.skills.filter(x => x.sectionId === s.id).length, 1);
+  // Only people who may edit the course can add one.
+  assert.equal(code(() => api.saveSection('u5', { id: s.id, skill: { enabled: false } })), 'ok');
+  assert.equal(code(() => api.saveSection('s1', { id: s.id, skill: { enabled: true } })), 'forbidden_role');
+});
+
+test('a section skill with sign-offs cannot be switched off, and survives removing the section', () => {
+  const { api, db } = fresh();
+  const s = api.saveSection('u1', { courseId: 'c4', title: { en: 'Milk steaming' }, skill: { enabled: true } });
+  const k = db.skills.find(x => x.sectionId === s.id);
+  db.signoffs.push({ id: 'so-x', skillId: k.id, userId: 's1', status: 'passed', notes: '', by: 'u1', at: new Date(NOW).toISOString() });
+  assert.equal(code(() => api.saveSection('u1', { id: s.id, skill: { enabled: false } })), 'has_history');
+  api.removeSection('u1', s.id);
+  const kept = db.skills.find(x => x.id === k.id);
+  assert.ok(kept, 'skill kept for its records');
+  assert.equal(kept.sectionId, null);
+});
+
+test('duplicating a course points copied skills at the copied sections', () => {
+  const { api, db } = fresh();
+  const s = api.saveSection('u1', { courseId: 'c4', title: { en: 'Pour-over' }, skill: { enabled: true } });
+  const copy = api.duplicateCourse('u1', 'c4');
+  const ns = db.sections.find(x => x.courseId === copy.id && x.title.en === 'Pour-over');
+  const nk = db.skills.find(x => x.courseId === copy.id && x.title.en === 'Pour-over');
+  assert.equal(nk.sectionId, ns.id);
+  assert.notEqual(nk.sectionId, s.id);
+});

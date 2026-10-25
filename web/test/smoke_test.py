@@ -173,6 +173,13 @@ def run():
         rows = page.locator('.card-row b').all_inner_texts()
         if rows[:2] != ['Espresso', 'Flat White'] or len(rows) != len(pdfs):
             errors.append(f'uploaded cards: {rows}')
+        # a section can be marked as having a practical skill
+        page.check('form[data-form=sectionDetails] input[name=hasSkill]')
+        page.fill('form[data-form=sectionDetails] input[name=ken]', 'Pull a shot')
+        click(page, 'form[data-form=sectionDetails] button[type=submit]', 300)
+        if not page.is_checked('form[data-form=sectionDetails] input[name=hasSkill]') or page.input_value('form[data-form=sectionDetails] input[name=ken]') != 'Pull a shot':
+            errors.append('section skill was not saved')
+        shot(page, '02b-ops-section-skill')
         click(page, '.card-row [data-act=renameCard]')
         page.fill('#modal-root input[name=title]', 'Espresso (house recipe)')
         click(page, '#modal-root button[type=submit]')

@@ -48,7 +48,7 @@ Step-by-step instructions: [docs/go-live.md](docs/go-live.md).
 | `config.js` | The one file you edit after setting up Supabase: project URL and publishable key. |
 | `scripts/` | `build-prototype.js` (builds `site/` for GitHub Pages and `web/dist/index.html`, the trial copy), `build-function.js`, `dev-server.js` (local stand-in for the live site). |
 | `.github/workflows/` | `ci.yml` tests; `pages.yml` publishes the site on every push to `main`; `deploy-function.yml` optional server update. |
-| `web/test/`, `supabase/tests/` | Engine (36), server (11), database (4), Deno function and browser tests. `fixtures.js` holds fictional test data used only by tests. |
+| `web/test/`, `supabase/tests/` | Engine (42), server (12), database (4), Deno function and browser tests. `fixtures.js` holds fictional test data used only by tests. |
 | `docs/` | `go-live.md` (setup and day-to-day running); `archive/` (an earlier database design, not used). |
 
 ## Run it locally

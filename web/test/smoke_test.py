@@ -358,6 +358,15 @@ def run():
         click(page, '[data-act=correctAttempt]')
         if page.locator('#modal-root form[data-form=correct] input[name=value]').count() != 1:
             errors.append('Correct (attempt) dialog has no score field')
+        # What is missing is named before anything is sent: an empty score, then a missing reason.
+        page.fill('#modal-root input[name=value]', '')
+        click(page, '#modal-root button[type=submit]')
+        expect_text(page, 'Enter the corrected score', 'correction without a score')
+        page.fill('#modal-root input[name=value]', '٨٥')
+        click(page, '#modal-root button[type=submit]')
+        expect_text(page, 'Write the reason first', 'correction without a reason')
+        if page.locator('#modal-root form[data-form=correct]').count() != 1:
+            errors.append('Correct dialog closed although nothing was saved')
         click(page, '#modal-root [data-act=closeModal]')
         # Each attempt says which course and section it belongs to.
         expect_text(page, 'Barista Foundations · ')
@@ -369,8 +378,12 @@ def run():
             errors.append('Extra attempts dialog lists no exam')
         page.fill('#xa-count', '2')
         click(page, '#modal-root button[type=submit]')
-        expect_text(page, 'A reason is required', 'extra attempts without a reason')
+        expect_text(page, 'Write the reason first', 'extra attempts without a reason')
+        page.fill('#xa-count', '0')
         page.fill('#modal-root textarea[name=reason]', 'Agreed with the branch manager')
+        click(page, '#modal-root button[type=submit]')
+        expect_text(page, 'Enter how many attempts to add', 'extra attempts with a bad number')
+        page.fill('#xa-count', '٢')
         click(page, '#modal-root button[type=submit]')
         expect_text(page, 'Attempts added: 2')
         expect_text(page, 'Extra attempts · +2')

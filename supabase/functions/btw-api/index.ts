@@ -196,7 +196,7 @@
     'createUser', 'updateUser', 'setUserStatus', 'removeUser', 'commitImport', 'setGrant', 'saveLocation', 'saveTeam',
     'createCourse', 'updateCourse', 'duplicateCourse', 'publishCourse', 'setCourseStatus', 'deleteCourse',
     'saveSection', 'moveSection', 'removeSection', 'addCards', 'moveFile', 'replaceFile', 'renameFile', 'removeFile', 'saveExam', 'removeExam',
-    'assign', 'setSignoff', 'revokeCert', 'reissueCert', 'correctRecord',
+    'assign', 'setSignoff', 'revokeCert', 'reissueCert', 'correctRecord', 'grantAttempts',
     'exportReport', 'fullExport', 'saveRule', 'runReminders', 'resolveIssue', 'saveFaq', 'deleteFaq', 'updateSettings', 'setEmailProvider'
   ];
   // Reads that need data outside the person's own copy (run on the server, nothing saved).
@@ -580,18 +580,30 @@
       };
     }
 
+    // Attempts a manager added for one person on one exam (see grantAttempts). They are kept with the
+    // record corrections, so they carry a reason and reach that person's own copy like the rest of their record.
+    function extraAttempts(userId, examId, version) {
+      return db.corrections
+        .filter(c => c.userId === userId && c.entity === 'exam' && c.entityId === examId && c.field === 'extraAttempts' && (c.version == null || version == null || c.version === version))
+        .reduce((n, c) => n + (Number(c.add) || 0), 0);
+    }
+
     function examSummary(ex, userId, version) {
       const atts = attemptsOf(userId, ex.id, version).filter(t => t.submittedAt);
       const best = bestAttempt(userId, ex.id, version);
       const used = atts.length;
       const failedLast = atts.length && !atts[atts.length - 1].passed;
       const passed = !!(best && best.passed);
-      const left = ex.maxAttempts ? Math.max(0, ex.maxAttempts - used) : null;
-      let canStart = !passed && (left === null || left > 0) && (used === 0 || (failedLast && ex.allowRetake));
+      const extra = extraAttempts(userId, ex.id, version);
+      // The exam's own limit (a single attempt when retakes are off; none when it is 0) plus this person's extra attempts.
+      const limit = ex.allowRetake ? (ex.maxAttempts || null) : 1;
+      const left = limit === null ? null : Math.max(0, limit + extra - used);
+      const canStart = !passed && (left === null || left > 0) && (used === 0 || !!failedLast);
       return {
         id: ex.id, kind: ex.kind, title: ex.title, passPct: ex.passPct, timeLimitMin: ex.timeLimitMin,
         maxAttempts: ex.maxAttempts, allowRetake: ex.allowRetake, review: ex.review, questionCount: ex.questions.length,
-        attemptsUsed: used, attemptsLeft: left, bestScore: best ? best.scorePct : null, passed, canStart
+        attemptsUsed: used, attemptsLeft: left, attemptLimit: limit === null ? null : limit + extra, extraAttempts: extra,
+        bestScore: best ? best.scorePct : null, passed, canStart
       };
     }
 
@@ -663,8 +675,7 @@
       const sum = examSummary(ex, a.id, e.version);
       if (!open) {
         if (sum.passed) throw new ApiError('invalid', 'You already passed this exam.');
-        if (sum.attemptsLeft === 0) throw new ApiError('attempts_used', 'No attempts left. Ask your manager.');
-        if (sum.attemptsUsed > 0 && !ex.allowRetake) throw new ApiError('attempts_used', 'Retakes are not allowed for this exam.');
+        if (sum.attemptsLeft === 0) throw new ApiError('attempts_used', ex.allowRetake || sum.extraAttempts ? 'No attempts left. Ask your manager.' : 'Retakes are not allowed for this exam.');
       }
       const t = open || {
         id: nextId('t'), examId: ex.id, userId: a.id, version: e.version,
@@ -783,7 +794,13 @@
       const out = { user: pub(t) };
       if (t.id === a.id || has(a, 'progress.view')) {
         out.enrollments = db.enrollments.filter(e => e.userId === t.id).map(e => ({ ...clone(e), course: clone(byId('courses', e.courseId).title), ...enrollmentDetail(e) }));
-        out.attempts = db.attempts.filter(x => x.userId === t.id && x.submittedAt).map(x => ({ ...clone(x), exam: clone(byId('exams', x.examId).title), answers: undefined }));
+        out.attempts = db.attempts.filter(x => x.userId === t.id && x.submittedAt).map(x => {
+          const ex = byId('exams', x.examId);
+          const sec = ex.sectionId ? byId('sections', ex.sectionId) : null;
+          const course = byId('courses', ex.courseId);
+          // The course and section say which quiz this was: every section quiz has the same title.
+          return { ...clone(x), exam: clone(ex.title), course: course ? clone(course.title) : null, section: sec ? clone(sec.title) : null, answers: undefined };
+        });
         out.signoffs = db.signoffs.filter(s => s.userId === t.id).map(s => ({ ...clone(s), skill: clone(byId('skills', s.skillId).title) }));
         out.corrections = db.corrections.filter(c => c.userId === t.id).map(clone);
       }
@@ -1080,7 +1097,7 @@
       return {
         course: clone(c),
         versions: db.versions.filter(v => v.courseId === courseId).sort((x, y) => y.version - x.version).map(clone),
-        sections: courseSections(courseId).map(s => ({ ...clone(s), files: sectionFiles(s.id).map(clone), exam: clone(sectionExam(s.id)) })),
+        sections: courseSections(courseId).map(s => ({ ...clone(s), files: sectionFiles(s.id).map(clone), exam: clone(sectionExam(s.id)), skill: clone(sectionSkill(s.id) || null) })),
         final: clone(finalExam(courseId)),
         skills: courseSkills(courseId).map(clone),
         canEdit: has(a, 'content.edit') && courseInScope(a, courseId),
@@ -1133,14 +1150,16 @@
         nx.questions.forEach(q => { q.id = nextId('q'); q.choices.forEach(ch => { ch.id = nextId('o'); }); });
         db.exams.push(nx);
       };
+      const secMap = {};
       courseSections(courseId).forEach(s => {
         const ns = { ...clone(s), id: nextId('s'), courseId: c.id };
+        secMap[s.id] = ns.id;
         db.sections.push(ns);
         sectionFiles(s.id).forEach(f => db.files.push({ ...clone(f), id: nextId('f'), sectionId: ns.id, addedBy: a.id, addedAt: iso(now()) }));
         const ex = sectionExam(s.id); if (ex) copyExam(ex, ns.id);
       });
       const fx = finalExam(courseId); if (fx) copyExam(fx, null);
-      courseSkills(courseId).forEach(k => db.skills.push({ ...clone(k), id: nextId('k'), courseId: c.id }));
+      courseSkills(courseId).forEach(k => db.skills.push({ ...clone(k), id: nextId('k'), courseId: c.id, sectionId: k.sectionId ? (secMap[k.sectionId] || null) : null }));
       audit(a, 'course.duplicate', 'course', c.id, null, { from: courseId });
       return clone(byId('courses', c.id));
     }
@@ -1208,11 +1227,30 @@
         if (d.title) s.title = i18nField(d.title, true);
         if (d.intro) s.intro = i18nField(d.intro);
         if ('required' in d) s.required = !!d.required;
+        if (d.skill) setSectionSkill(a, s, d.skill);
         audit(a, 'section.update', 'section', s.id, before, s); return clone(s);
       }
       needCourse(a, 'content.edit', d.courseId);
       const s = { id: nextId('s'), courseId: d.courseId, pos: courseSections(d.courseId).length + 1, title: i18nField(d.title, true), intro: i18nField(d.intro), required: d.required !== false };
-      db.sections.push(s); audit(a, 'section.create', 'section', s.id, null, s); return clone(s);
+      db.sections.push(s); audit(a, 'section.create', 'section', s.id, null, s);
+      if (d.skill) setSectionSkill(a, s, d.skill);
+      return clone(s);
+    }
+
+    // A section can carry one practical skill: a manager watches the person do it on shift and signs it off.
+    // `opt` is { enabled, title: {en, ar}, desc: {en, ar} }. The skill title falls back to the section title.
+    const sectionSkill = sectionId => db.skills.find(k => k.sectionId === sectionId);
+    function setSectionSkill(a, s, opt) {
+      const k = sectionSkill(s.id);
+      if (opt.enabled) {
+        const title = { en: clean(opt.title && opt.title.en) || s.title.en, ar: clean(opt.title && opt.title.ar) || s.title.ar };
+        const desc = i18nField(opt.desc);
+        if (k) { const before = clone(k); Object.assign(k, { title, desc, requiresSignoff: true }); audit(a, 'skill.update', 'skill', k.id, before, k); }
+        else { const nk = { id: nextId('k'), courseId: s.courseId, sectionId: s.id, title, desc, requiresSignoff: true }; db.skills.push(nk); audit(a, 'skill.create', 'skill', nk.id, null, nk); }
+      } else if (k) {
+        if (db.signoffs.some(x => x.skillId === k.id)) throw new ApiError('has_history', 'People already have sign-offs for this skill, so it cannot be removed.');
+        db.skills = db.skills.filter(x => x.id !== k.id); audit(a, 'skill.remove', 'skill', k.id, k, null);
+      }
     }
 
     function moveSection(actorId, sectionId, dir) {
@@ -1231,6 +1269,10 @@
       db.sections = db.sections.filter(x => x.id !== s.id);
       db.files = db.files.filter(f => f.sectionId !== s.id);
       db.exams = db.exams.filter(x => x.sectionId !== s.id);
+      // The section's practical skill is removed with it, unless people already have sign-offs:
+      // then it stays on the course so those records keep their skill.
+      db.skills = db.skills.filter(k => k.sectionId !== s.id || db.signoffs.some(x => x.skillId === k.id));
+      db.skills.forEach(k => { if (k.sectionId === s.id) k.sectionId = null; });
       courseSections(s.courseId).forEach((x, i) => { x.pos = i + 1; });
       audit(a, 'section.remove', 'section', s.id, s, null);
       return true;
@@ -1530,6 +1572,51 @@
         return { ok: true, certificate: clone(cert) };
       }
       throw new ApiError('invalid');
+    }
+
+    /* ---------- extra exam attempts for one person ---------- */
+
+    // Where one person stands on each exam of a course: attempts used, their limit, and what is left.
+    function examStatus(actorId, userId, courseId) {
+      const a = actorOf(actorId);
+      const u = user(userId); needUser(a, 'progress.view', u);
+      const e = enrollmentFor(u.id, courseId); if (!e) throw new ApiError('invalid', 'Not enrolled.');
+      const rows = courseSections(courseId).map(s => ({ s, ex: sectionExam(s.id) })).filter(x => x.ex);
+      const fx = finalExam(courseId); if (fx) rows.push({ s: null, ex: fx });
+      return rows.map(({ s, ex }) => {
+        const sum = examSummary(ex, u.id, e.version);
+        return {
+          id: ex.id, kind: ex.kind, title: clone(ex.title), sectionId: s ? s.id : null, pos: s ? s.pos : null, section: s ? clone(s.title) : null,
+          passed: sum.passed, attemptsUsed: sum.attemptsUsed, attemptLimit: sum.attemptLimit, attemptsLeft: sum.attemptsLeft, extraAttempts: sum.extraAttempts,
+          bestScore: sum.bestScore, blocked: !sum.passed && sum.attemptsLeft === 0
+        };
+      });
+    }
+
+    // Gives one person more attempts on one exam. The exam's own limit stays as it is for everyone else.
+    function grantAttempts(actorId, d) {
+      const a = actorOf(actorId); need(a, 'records.correct');
+      d = d || {};
+      const u = user(d.userId); needUser(a, 'records.correct', u);
+      const ex = byId('exams', d.examId); if (!ex) throw new ApiError('not_found');
+      const e = enrollmentFor(u.id, ex.courseId); if (!e) throw new ApiError('invalid', 'Not enrolled.');
+      const reason = clean(d.reason);
+      if (reason.length < 5) throw new ApiError('invalid', 'A reason is required for extra attempts.');
+      const n = Number(d.count);
+      if (!Number.isInteger(n) || n < 1 || n > 10) throw new ApiError('invalid', 'Add between 1 and 10 attempts.');
+      const sum = examSummary(ex, u.id, e.version);
+      if (sum.passed) throw new ApiError('invalid', 'This person already passed this exam.');
+      if (sum.attemptLimit === null) throw new ApiError('invalid', 'This exam has no attempt limit.');
+      const rec = { id: nextId('r'), userId: u.id, entity: 'exam', entityId: ex.id, field: 'extraAttempts', version: e.version, add: n, old: sum.extraAttempts, new: sum.extraAttempts + n, reason, by: a.id, at: iso(now()) };
+      db.corrections.push(rec);
+      audit(a, 'attempts.grant', 'exam', ex.id + ':' + u.id, { extraAttempts: sum.extraAttempts }, { extraAttempts: rec.new, version: e.version }, reason);
+      const c = byId('courses', ex.courseId);
+      const sec = ex.sectionId ? byId('sections', ex.sectionId) : null;
+      const where = lang => (sec ? `${c.title[lang]} · ${sec.title[lang]}` : `${c.title[lang]} · ${ex.title[lang]}`);
+      notify(u.id, 'attempts', { en: 'Extra exam attempts added', ar: 'أُضيفت لك محاولات إضافية' },
+        { en: `${n} more ${n === 1 ? 'attempt' : 'attempts'} on ${where('en')}.`, ar: `محاولات إضافية (${n}) في ${where('ar')}.` }, 'course:' + ex.courseId, null);
+      const after = examSummary(ex, u.id, e.version);
+      return { ok: true, added: n, attemptsLeft: after.attemptsLeft, attemptLimit: after.attemptLimit };
     }
 
     /* ---------- KPIs ---------- */
@@ -1996,7 +2083,7 @@
       // content
       listCoursesManage, getCourseManage, createCourse, updateCourse, duplicateCourse, publishCourse, setCourseStatus, deleteCourse, saveSection, moveSection, removeSection, addFiles, addCards, moveFile, replaceFile, renameFile, removeFile, saveExam, removeExam,
       // training records
-      assign, listAssignments, listSignoffs, setSignoff, listCerts, revokeCert, reissueCert, correctRecord,
+      assign, listAssignments, listSignoffs, setSignoff, listCerts, revokeCert, reissueCert, correctRecord, examStatus, grantAttempts,
       // reports
       kpis, exportReport, exportToDrive, retryExport, listExports, runBackup, fullExport,
       // reminders, support

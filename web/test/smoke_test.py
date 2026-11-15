@@ -339,6 +339,44 @@ def run():
         shot(page, '18-admin-dashboard-ar')
         ctx.close()
 
+        # ---------- Operations Manager: record corrections and extra attempts on a person's page ----------
+        ctx = new_context(b, 1366, 900, 'en')
+        page = open_page(ctx)
+        signin(page, 'HQ-020')
+        nav(page, 'people')
+        click(page, 'tr[data-r=person][data-user-id=s4]')
+        expect_text(page, 'Yousef Bakr')
+        # "Correct" on a course row opens the correction dialog (it used to open "Add section").
+        click(page, '[data-act=correctSection]')
+        title = page.inner_text('#modal-root h2')
+        if title != 'Correct a training record':
+            errors.append(f'Correct (section) opened the wrong dialog: {title!r}')
+        if page.locator('#modal-root form[data-form=correct] select[name=id]').count() != 1:
+            errors.append('Correct (section) dialog has no section list')
+        click(page, '#modal-root [data-act=closeModal]')
+        # "Correct" on an exam attempt asks for the corrected score.
+        click(page, '[data-act=correctAttempt]')
+        if page.locator('#modal-root form[data-form=correct] input[name=value]').count() != 1:
+            errors.append('Correct (attempt) dialog has no score field')
+        click(page, '#modal-root [data-act=closeModal]')
+        # Each attempt says which course and section it belongs to.
+        expect_text(page, 'Barista Foundations · ')
+        # Extra attempts for this person on one exam.
+        click(page, '[data-act=extraAttempts]')
+        if page.inner_text('#modal-root h2') != 'Extra attempts':
+            errors.append('Extra attempts dialog did not open')
+        if page.locator('#xa-exam option').count() < 1:
+            errors.append('Extra attempts dialog lists no exam')
+        page.fill('#xa-count', '2')
+        click(page, '#modal-root button[type=submit]')
+        expect_text(page, 'A reason is required', 'extra attempts without a reason')
+        page.fill('#modal-root textarea[name=reason]', 'Agreed with the branch manager')
+        click(page, '#modal-root button[type=submit]')
+        expect_text(page, 'Attempts added: 2')
+        expect_text(page, 'Extra attempts · +2')
+        shot(page, '20-ops-extra-attempts')
+        ctx.close()
+
         # ---------- public verify ----------
         ctx = new_context(b, 390, 844, 'en')
         page = open_page(ctx)

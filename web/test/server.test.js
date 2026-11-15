@@ -194,3 +194,36 @@ test('every action the browser may send exists on the server', () => {
   const api = Core.createBackend(Core.seed());
   for (const f of [...Core.MUTATIONS, ...Core.SERVER_READS]) assert.equal(typeof api[f], 'function', f);
 });
+
+test('extra attempts: only a manager can add them; the person can then start the exam again', async () => {
+  const b = await withAdmin();
+  const loc = b.view.locations[0].id;
+  const s1 = (await fn(b, b.admin, 'createUser', { name: { en: 'Omar' }, code: 'S-1', role: 'staff', locationId: loc, password: 'Temp2026x', mustChange: false })).body.result;
+  const course = (await fn(b, b.admin, 'createCourse', { title: { en: 'Desserts', ar: 'الحلويات' } })).body.result;
+  const sec = (await fn(b, b.admin, 'saveSection', { courseId: course.id, title: { en: 'London cake', ar: 'كيكة لندن' } })).body.result;
+  const quiz = (await fn(b, b.admin, 'saveExam', { sectionId: sec.id, passPct: 80, timeLimitMin: 0, maxAttempts: 3, allowRetake: true, review: 'none', questions: [{ type: 'tf', prompt: { en: 'q' }, choices: [{ text: { en: 'T' }, correct: true }, { text: { en: 'F' } }] }] })).body.result;
+  await fn(b, b.admin, 'saveExam', { courseId: course.id, passPct: 50, timeLimitMin: 0, maxAttempts: 3, allowRetake: true, review: 'none', questions: [{ type: 'tf', prompt: { en: 'Final' }, choices: [{ text: { en: 'T' }, correct: true }, { text: { en: 'F' } }] }] });
+  await fn(b, b.admin, 'publishCourse', course.id, 'First');
+  await fn(b, b.admin, 'assign', { courseId: course.id, target: { kind: 'user', ids: [s1.id] } });
+  const tok = (await b.call('login', { identifier: 'S-1', password: 'Temp2026x' })).body.token;
+  for (let i = 0; i < 3; i++) {
+    const st = await fn(b, tok, 'startAttempt', quiz.id);
+    assert.equal(st.status, 200, JSON.stringify(st.body));
+    await fn(b, tok, 'submitAttempt', st.body.result.attemptId, {});
+  }
+  assert.equal((await fn(b, tok, 'startAttempt', quiz.id)).body.error.code, 'attempts_used');
+  // The person cannot add attempts for themselves, even by calling the server by hand.
+  assert.equal((await fn(b, tok, 'grantAttempts', { userId: s1.id, examId: quiz.id, count: 5, reason: 'I would like more' })).status, 403);
+  const g = await fn(b, b.admin, 'grantAttempts', { userId: s1.id, examId: quiz.id, count: 2, reason: 'Agreed with the branch manager' });
+  assert.equal(g.status, 200, JSON.stringify(g.body));
+  assert.equal(g.body.result.attemptsLeft, 2);
+  assert.ok(b.store._audit.some(a => a.action === 'attempts.grant'));
+  // The person's next copy carries the extra attempts, and the server lets the exam start.
+  const v = (await b.call('view', {}, tok)).body.view;
+  assert.ok(v.corrections.some(c => c.field === 'extraAttempts' && c.add === 2));
+  assert.ok(v.notifications.some(n => n.kind === 'attempts'));
+  assert.equal(Core.createBackend(v).learnerCourse(s1.id, course.id).sections[0].exam.canStart, true);
+  const again = await fn(b, tok, 'startAttempt', quiz.id);
+  assert.equal(again.status, 200);
+  assert.equal(again.body.result.no, 4);
+});

@@ -271,6 +271,33 @@ def run():
             expect_text(page, 'مرحبًا', 'after reload')
             ctx.close()
 
+            # ---------- the administrator adds exam attempts for that person (saved by the server) ----------
+            who['name'] = 'admin'
+            ctx, page = new_page(b, 1280, 860, 'en', who)
+            page.fill('#f-identifier', 'owner@btw.sa')
+            page.fill('#f-password', '10203040')
+            click(page, 'form[data-form=login] button[type=submit]')
+            settle(page)
+            nav(page, 'people')
+            page.locator('tr[data-r=person]', has_text='Sara Test').click()
+            page.wait_for_timeout(200)
+            expect_text(page, 'Product knowledge · Hot and cold drinks', 'attempt rows name the course and section')
+            click(page, '[data-act=correctSection]')
+            if page.inner_text('#modal-root h2') != 'Correct a training record':
+                errors.append('Correct opened the wrong dialog on the live site')
+            click(page, '#modal-root [data-act=closeModal]')
+            click(page, '[data-act=extraAttempts]')
+            if page.locator('#xa-exam option').count() < 1:
+                errors.append('extra attempts dialog lists no exam on the live site')
+            page.fill('#xa-count', '2')
+            page.fill('#modal-root textarea[name=reason]', 'Agreed with the branch manager')
+            click(page, '#modal-root button[type=submit]')
+            settle(page)
+            expect_text(page, 'Attempts added: 2', 'extra attempts saved')
+            expect_text(page, 'Extra attempts · +2', 'extra attempts listed on the record')
+            shot(page, '11-extra-attempts')
+            ctx.close()
+
             # ---------- public certificate check works without signing in ----------
             who['name'] = 'anon'
             ctx, page = new_page(b, 390, 844, 'en', who)

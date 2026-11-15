@@ -601,3 +601,88 @@ test('duplicating a course points copied skills at the copied sections', () => {
   assert.equal(nk.sectionId, ns.id);
   assert.notEqual(nk.sectionId, s.id);
 });
+
+test('extra attempts: a manager adds tries for one person on one exam, with a reason; nobody else is affected', () => {
+  const { api, db } = fresh();
+  const ex = db.exams.find(x => x.id === 'x1');
+  const right = Object.fromEntries(ex.questions.map(q => [q.id, q.choices.find(c => c.correct).id]));
+  const wrong = Object.fromEntries(ex.questions.map(q => [q.id, q.choices.find(c => !c.correct).id]));
+  const fail = uid => { const s = api.startAttempt(uid, 'x1'); return api.submitAttempt(uid, s.attemptId, wrong); };
+  viewCards(api, db, 's6', 's_c1_1');
+  fail('s6'); fail('s6');
+  const last = fail('s6');
+  assert.equal(last.attemptsLeft, 0); assert.equal(last.canRetake, false);
+  assert.equal(code(() => api.startAttempt('s6', 'x1')), 'attempts_used');
+  let row = api.examStatus('u3', 's6', 'c1').find(x => x.id === 'x1');
+  assert.deepEqual([row.attemptsUsed, row.attemptLimit, row.attemptsLeft, row.blocked], [3, 3, 0, true]);
+  assert.equal(row.section.en, db.sections.find(s => s.id === 's_c1_1').title.en);
+
+  // Needs the permission, the person in scope, a reason and a sensible number.
+  assert.equal(code(() => api.grantAttempts('u4', { userId: 's6', examId: 'x1', count: 2, reason: 'Was unwell on the day' })), 'forbidden_role');
+  assert.equal(code(() => api.grantAttempts('s6', { userId: 's6', examId: 'x1', count: 2, reason: 'Let me in please' })), 'forbidden_role');
+  assert.equal(code(() => api.grantAttempts('u3', { userId: 's6', examId: 'x1', count: 2, reason: '' })), 'invalid');
+  assert.equal(code(() => api.grantAttempts('u3', { userId: 's6', examId: 'x1', count: 0, reason: 'Was unwell on the day' })), 'invalid');
+  assert.equal(code(() => api.grantAttempts('u3', { userId: 's6', examId: 'x1', count: 11, reason: 'Was unwell on the day' })), 'invalid');
+  assert.equal(code(() => api.grantAttempts('u3', { userId: 's6', examId: 'nope', count: 1, reason: 'Was unwell on the day' })), 'not_found');
+  assert.equal(db.corrections.filter(c => c.field === 'extraAttempts').length, 0);
+
+  const g = api.grantAttempts('u3', { userId: 's6', examId: 'x1', count: 2, reason: 'Was unwell on the day' });
+  assert.deepEqual([g.added, g.attemptsLeft, g.attemptLimit], [2, 2, 5]);
+  assert.ok(db.corrections.some(c => c.userId === 's6' && c.entity === 'exam' && c.entityId === 'x1' && c.add === 2 && c.by === 'u3'));
+  assert.ok(db.audit.some(a => a.action === 'attempts.grant' && a.reason === 'Was unwell on the day'));
+  assert.ok(db.notifications.some(n => n.userId === 's6' && n.kind === 'attempts'));
+  assert.equal(ex.maxAttempts, 3, 'the exam limit itself is unchanged');
+
+  // The person's own copy (what their phone draws from) shows the extra attempts too.
+  const local = Core.createBackend(api.scopedView('s6'), { now: () => NOW });
+  const mine = local.learnerCourse('s6', 'c1').sections.find(s => s.id === 's_c1_1').exam;
+  assert.deepEqual([mine.attemptsLeft, mine.canStart], [2, true]);
+
+  // Someone else on the same exam still has the normal limit.
+  viewCards(api, db, 's4', 's_c1_1');
+  const other = api.examStatus('u3', 's4', 'c1').find(x => x.id === 'x1');
+  assert.equal(other.extraAttempts, 0); assert.equal(other.attemptLimit, 3);
+
+  // The extra attempts are used up like any other; passing ends it.
+  assert.equal(fail('s6').attemptsLeft, 1);
+  const s = api.startAttempt('s6', 'x1');
+  assert.equal(s.no, 5);
+  assert.equal(api.submitAttempt('s6', s.attemptId, right).passed, true);
+  assert.equal(code(() => api.grantAttempts('u3', { userId: 's6', examId: 'x1', count: 1, reason: 'Was unwell on the day' })), 'invalid');
+  // The record page names the course and section of each attempt.
+  const rec = api.getUser('u3', 's6').attempts.filter(t => t.examId === 'x1');
+  assert.equal(rec.length, 5);
+  assert.ok(rec.every(t => t.course.en === db.courses.find(c => c.id === 'c1').title.en && t.section.en === db.sections.find(x => x.id === 's_c1_1').title.en));
+});
+
+test('extra attempts also open an exam that allows no retakes; an exam without a limit needs none', () => {
+  const { api, db } = fresh();
+  const x3 = db.exams.find(x => x.id === 'x3');
+  x3.allowRetake = false;
+  viewCards(api, db, 's4', 's_c1_3');
+  let s = api.startAttempt('s4', 'x3'); api.submitAttempt('s4', s.attemptId, {});
+  assert.equal(code(() => api.startAttempt('s4', 'x3')), 'attempts_used');
+  assert.equal(api.examStatus('u3', 's4', 'c1').find(x => x.id === 'x3').attemptLimit, 1);
+  api.grantAttempts('u3', { userId: 's4', examId: 'x3', count: 1, reason: 'Tablet froze mid-quiz' });
+  s = api.startAttempt('s4', 'x3'); api.submitAttempt('s4', s.attemptId, {});
+  assert.equal(code(() => api.startAttempt('s4', 'x3')), 'attempts_used');
+  // No limit: nothing to add.
+  x3.allowRetake = true; x3.maxAttempts = 0;
+  assert.equal(api.examStatus('u3', 's4', 'c1').find(x => x.id === 'x3').attemptLimit, null);
+  assert.equal(code(() => api.grantAttempts('u3', { userId: 's4', examId: 'x3', count: 1, reason: 'Tablet froze mid-quiz' })), 'invalid');
+  // Out of scope: an Area Manager cannot reach staff of another city, even with the permission.
+  db.grants.u4.perms.push('records.correct');
+  assert.equal(code(() => api.grantAttempts('u4', { userId: 's7', examId: 'x1', count: 1, reason: 'Tablet froze mid-quiz' })), 'not_found');
+});
+
+test('extra attempts belong to one course version; a retrain starts from the normal limit', () => {
+  const { api, db } = fresh();
+  viewCards(api, db, 's6', 's_c1_1');
+  const e = db.enrollments.find(x => x.userId === 's6' && x.courseId === 'c1' && x.active);
+  api.grantAttempts('u3', { userId: 's6', examId: 'x1', count: 4, reason: 'Extra practice agreed' });
+  assert.equal(api.examStatus('u3', 's6', 'c1').find(x => x.id === 'x1').attemptLimit, 7);
+  api.publishCourse('u3', 'c1', 'New recipe', true);
+  const ne = db.enrollments.find(x => x.userId === 's6' && x.courseId === 'c1' && x.active);
+  assert.ok(ne.version > e.version);
+  assert.equal(api.examStatus('u3', 's6', 'c1').find(x => x.id === 'x1').attemptLimit, 3);
+});

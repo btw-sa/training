@@ -123,12 +123,12 @@ PAGES.person = () => {
   const self = u.id === S.userId;
   const ctx = { userId: u.id };
   const training = r.enrollments ? table([{ label: t('course') }, { label: t('status') }, { label: t('progress') }, { label: t('due_date') }, { label: '' }],
-    r.enrollments.filter(e => e.active).map(e => `<tr><td><b>${esc(L(e.course))}</b><div class="small muted">${t('version_n', { n: fmtNum(e.version) })}</div></td><td>${pill(e.awaitingSignoff ? 'awaiting' : e.status)}</td><td style="min-width:140px">${bar(e.percent)}<span class="tiny muted">${t('sections_done', { a: fmtNum(e.sectionsDone), b: fmtNum(e.sectionsTotal) })}</span></td><td>${esc(fmtDate(e.dueOn))}</td><td>${!e.completedAt ? gbtn('records.correct', ctx, t('correct'), 'correctSection', { sm: true, data: { user: u.id, course: e.courseId } }) : ''}</td></tr>`)) : '';
+    r.enrollments.filter(e => e.active).map(e => `<tr><td><b>${esc(L(e.course))}</b><div class="small muted">${t('version_n', { n: fmtNum(e.version) })}</div></td><td>${pill(e.awaitingSignoff ? 'awaiting' : e.status)}</td><td style="min-width:140px">${bar(e.percent)}<span class="tiny muted">${t('sections_done', { a: fmtNum(e.sectionsDone), b: fmtNum(e.sectionsTotal) })}</span></td><td>${esc(fmtDate(e.dueOn))}</td><td>${!e.completedAt ? `<div class="row" style="gap:6px">${gbtn('records.correct', ctx, t('correct'), 'correctSection', { sm: true, data: { user: u.id, course: e.courseId } })}${gbtn('records.correct', ctx, t('extra_attempts'), 'extraAttempts', { sm: true, icon: 'plus', data: { user: u.id, course: e.courseId } })}</div>` : ''}</td></tr>`)) : '';
   const attempts = r.attempts ? table([{ label: t('exam') }, { label: t('attempts') }, { label: t('score'), num: true }, { label: t('result') }, { label: t('date') }, { label: '' }],
-    r.attempts.slice().reverse().map(a => `<tr><td>${esc(L(a.exam))}</td><td class="num">${fmtNum(a.no)}</td><td class="num">${fmtPct(a.scorePct)}${a.corrected ? ' *' : ''}</td><td>${pill(a.passed ? 'passed' : 'failed', a.passed ? t('st_passed') : t('st_failed'))}</td><td>${esc(fmtDateTime(a.submittedAt))}</td><td>${gbtn('records.correct', ctx, t('correct'), 'correctAttempt', { sm: true, data: { attempt: a.id } })}</td></tr>`)) : '';
+    r.attempts.slice().reverse().map(a => `<tr><td>${esc(L(a.exam))}${a.course ? `<div class="small muted">${esc(L(a.course))}${a.section ? ' · ' + esc(L(a.section)) : ''}</div>` : ''}</td><td class="num">${fmtNum(a.no)}</td><td class="num">${fmtPct(a.scorePct)}${a.corrected ? ' *' : ''}</td><td>${pill(a.passed ? 'passed' : 'failed', a.passed ? t('st_passed') : t('st_failed'))}</td><td>${esc(fmtDateTime(a.submittedAt))}</td><td>${gbtn('records.correct', ctx, t('correct'), 'correctAttempt', { sm: true, data: { attempt: a.id } })}</td></tr>`)) : '';
   const signoffs = r.signoffs ? (r.signoffs.length ? `<div class="list">${r.signoffs.slice().reverse().map(s => `<div class="li"><span class="grow"><b>${esc(L(s.skill))}</b><div class="small muted">${esc(t('signed_by', { status: t('st_' + s.status), who: userName(s.by), date: fmtDate(s.at) }))}${s.notes ? ' · ' + esc(s.notes) : ''}</div></span>${pill(s.status)}</div>`).join('')}</div>` : empty(t('no_data'))) : '';
   const certs = r.certs ? (r.certs.length ? `<div class="list">${r.certs.slice().reverse().map(c => `<button class="li" data-act="go" data-r="cert" data-cert-id="${c.id}">${icon('award')}<span class="grow"><b>${esc(L(c.courseTitle))}</b><div class="small muted mono">${esc(c.no)}</div></span>${pill(c.status)}</button>`).join('')}</div>` : empty(t('no_data'))) : '';
-  const corrections = r.corrections && r.corrections.length ? `<section class="stack"><h2>${t('person_corrections')}</h2><div class="list">${r.corrections.map(c => `<div class="li">${icon('edit')}<span class="grow"><b>${esc(c.entity)} · ${esc(String(c.old))} → ${esc(String(c.new))}</b><div class="small muted">${esc(c.reason)} · ${esc(userName(c.by))} · ${esc(fmtDateTime(c.at))}</div></span></div>`).join('')}</div></section>` : '';
+  const corrections = r.corrections && r.corrections.length ? `<section class="stack"><h2>${t('person_corrections')}</h2><div class="list">${r.corrections.map(c => `<div class="li">${icon('edit')}<span class="grow"><b>${c.field === 'extraAttempts' ? esc(t('extra_attempts') + ' · +' + fmtNum(c.add) + ' · ' + examLabel(c.entityId)) : esc(c.entity) + ' · ' + esc(String(c.old)) + ' → ' + esc(String(c.new))}</b><div class="small muted">${esc(c.reason)} · ${esc(userName(c.by))} · ${esc(fmtDateTime(c.at))}</div></span></div>`).join('')}</div></section>` : '';
   return `<div class="page">${backLink('people')}
     <div class="page-head"><div class="row"><span class="avatar" style="width:52px;height:52px;font-size:1.1rem">${esc(initials(u.name.en))}</span><div><h1>${esc(L(u.name))}</h1><div class="row small">${rolePill(u.role)}${pill(u.status)}<span class="muted">${esc(locName(u.locationId))}${u.teamId ? ' · ' + esc(teamName(u.teamId)) : ''}</span></div></div></div>
       <div class="row">${self ? '' : gbtn('users.edit', ctx, t('edit'), 'go', { data: { r: 'personEdit', 'user-id': u.id }, icon: 'edit' })}${self ? '' : (u.status === 'active' ? gbtn('users.deactivate', ctx, t('deactivate'), 'setStatus', { data: { user: u.id, status: 'inactive' }, kind: 'danger' }) : gbtn('users.deactivate', ctx, t('reactivate'), 'setStatus', { data: { user: u.id, status: 'active' } }))}</div></div>
@@ -176,17 +176,21 @@ A.setStatus = d => {
   openModal('confirm', { title: d.status === 'inactive' ? t('deactivate') : t('reactivate'), body: L(u.name), ok: d.status === 'inactive' ? t('deactivate') : t('reactivate'), danger: d.status === 'inactive', onOk: async () => { if (await call(() => api.setUserStatus(S.userId, d.user, d.status), d.status === 'inactive' ? t('deactivated') : t('reactivated'))) { closeModal(); render(); } } });
 };
 A.removePerson = d => openModal('confirm', { title: t('remove_person'), body: t('remove_person_note'), ok: t('remove_person'), danger: true, onOk: async () => { if (await call(() => api.removeUser(S.userId, d.user), t('removed'))) { closeModal(); go('people'); } } });
-A.correctAttempt = d => openModal('correct', { kind: 'attempt', id: d.attempt });
-A.correctSection = d => openModal('correct', { kind: 'section', userId: d.user, courseId: d.course });
+// The dialog's own data must not use the key "kind": openModal keeps the dialog's name there.
+A.correctAttempt = d => openModal('correct', { what: 'attempt', id: d.attempt });
+A.correctSection = d => openModal('correct', { what: 'section', userId: d.user, courseId: d.course });
 MODALS.correct = m => {
   let body;
-  if (m.kind === 'attempt') {
+  if (m.what === 'attempt') {
     const a = db.attempts.find(x => x.id === m.id);
     const ex = db.exams.find(x => x.id === a.examId);
     body = `${kv(t('exam'), esc(L(ex.title)) + ' · ' + t('attempt_n', { n: fmtNum(a.no) }) + ' · ' + fmtPct(a.scorePct))}${field(t('new_score'), input('value', a.scorePct, { type: 'number', min: 0, max: 100, im: 'numeric' }))}`;
   } else {
     const secs = db.sections.filter(s => s.courseId === m.courseId).sort((x, y) => x.pos - y.pos);
-    body = `${field(t('mark_section_done'), select('id', secs.map(s => [s.id, `${s.pos}. ${L(s.title)}`]), secs[0] && secs[0].id))}<input type="hidden" name="value" value="1">`;
+    // Start on the section this person has not finished yet.
+    const en = (api.getUser(S.userId, m.userId).enrollments || []).find(e => e.active && e.courseId === m.courseId);
+    const pre = (en && en.nextSectionId) || (secs[0] && secs[0].id);
+    body = `${field(t('mark_section_done'), select('id', secs.map(s => [s.id, `${s.pos}. ${L(s.title)}`]), pre))}<input type="hidden" name="value" value="1">`;
   }
   return {
     title: t('correct_record'),
@@ -196,9 +200,42 @@ MODALS.correct = m => {
 };
 F.correct = async d => {
   const m = S.modal;
-  const payload = m.kind === 'attempt' ? { kind: 'attempt', id: m.id, value: d.value, reason: d.reason } : { kind: 'section', id: d.id, userId: m.userId, value: true, reason: d.reason };
+  const payload = m.what === 'attempt' ? { kind: 'attempt', id: m.id, value: d.value, reason: d.reason } : { kind: 'section', id: d.id, userId: m.userId, value: true, reason: d.reason };
   const r = await call(() => api.correctRecord(S.userId, payload), t('correction_saved'));
   if (r) { if (r.certificate) toast(t('cert_earned'), 'good'); closeModal(); render(); }
+};
+
+/* Extra attempts: more tries on one exam for one person. The exam's own limit does not change. */
+function examLabel(examId) {
+  const ex = db.exams.find(x => x.id === examId);
+  if (!ex) return '—';
+  const sec = ex.sectionId ? db.sections.find(s => s.id === ex.sectionId) : null;
+  const c = db.courses.find(x => x.id === ex.courseId);
+  return [c ? L(c.title) : '', sec ? L(sec.title) : L(ex.title)].filter(Boolean).join(' · ');
+}
+A.extraAttempts = d => openModal('extraAttempts', { userId: d.user, courseId: d.course });
+MODALS.extraAttempts = m => {
+  const u = db.users.find(x => x.id === m.userId);
+  const c = db.courses.find(x => x.id === m.courseId);
+  // Only exams this person has not passed and that have a limit; one with no attempts left is chosen first.
+  const open = api.examStatus(S.userId, m.userId, m.courseId).filter(x => !x.passed && x.attemptLimit !== null);
+  const name = x => (x.section ? `${fmtNum(x.pos)}. ${L(x.section)}` : L(x.title));
+  const opts = open.map(x => [x.id, `${name(x)} — ${t('attempts_used_of', { a: fmtNum(x.attemptsUsed), b: fmtNum(x.attemptLimit) })}${x.blocked ? ' · ' + t('no_attempts_left') : ''}`]);
+  const first = open.find(x => x.blocked) || open[0];
+  const who = `<div class="cred small"><b>${esc(L(u.name))}</b><span>${esc(L(c.title))}</span></div>`;
+  if (!open.length) return { title: t('extra_attempts'), body: `<div class="stack">${who}<p class="muted">${t('extra_none_needed')}</p></div>`, foot: btn(t('close'), 'closeModal') };
+  return {
+    title: t('extra_attempts'),
+    body: `<form id="extra-form" data-form="extraAttempts" class="stack">${who}
+      ${field(t('exam'), select('examId', opts, first.id, { id: 'xa-exam' }))}
+      ${field(t('extra_count'), input('count', 1, { type: 'number', min: 1, max: 10, im: 'numeric', id: 'xa-count' }), { hint: t('extra_attempts_hint') })}
+      ${field(t('reason'), textarea('reason', '', { rows: 3 }), { hint: t('reason_hint') })}</form>`,
+    foot: `${btn(t('cancel'), 'closeModal')}<button class="btn primary" type="submit" form="extra-form">${t('save')}</button>`
+  };
+};
+F.extraAttempts = async d => {
+  const r = await call(() => api.grantAttempts(S.userId, { userId: S.modal.userId, examId: d.examId, count: Number(d.count), reason: d.reason }));
+  if (r) { closeModal(); toast(t('extra_added', { n: fmtNum(r.added) }), 'good'); render(); }
 };
 
 PAGES.personEdit = () => {

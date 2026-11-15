@@ -184,7 +184,7 @@ MODALS.correct = m => {
   if (m.what === 'attempt') {
     const a = db.attempts.find(x => x.id === m.id);
     const ex = db.exams.find(x => x.id === a.examId);
-    body = `${kv(t('exam'), esc(L(ex.title)) + ' · ' + t('attempt_n', { n: fmtNum(a.no) }) + ' · ' + fmtPct(a.scorePct))}${field(t('new_score'), input('value', a.scorePct, { type: 'number', min: 0, max: 100, im: 'numeric' }))}`;
+    body = `${kv(t('exam'), esc(L(ex.title)) + ' · ' + t('attempt_n', { n: fmtNum(a.no) }) + ' · ' + fmtPct(a.scorePct))}${field(t('new_score'), input('value', a.scorePct, { im: 'numeric', dir: 'ltr' }))}`;
   } else {
     const secs = db.sections.filter(s => s.courseId === m.courseId).sort((x, y) => x.pos - y.pos);
     // Start on the section this person has not finished yet.
@@ -198,9 +198,27 @@ MODALS.correct = m => {
     foot: `${btn(t('cancel'), 'closeModal')}<button class="btn primary" type="submit" form="correct-form">${t('save')}</button>`
   };
 };
-F.correct = async d => {
+// These dialogs are checked here before anything is sent, so the person reads what to fix in their
+// own language (the server only answers "check the details"). The server still checks again.
+function badField(form, name, msgKey) {
+  const el = form && form.querySelector(`[name=${name}]`);
+  if (el) { el.setAttribute('aria-invalid', 'true'); el.focus(); }
+  toast(t(msgKey), 'bad');
+  return true;
+}
+// Corrections, extra attempts and certificate actions need a written reason of 5 characters or more.
+const reasonMissing = (form, reason) => String(reason == null ? '' : reason).trim().length < 5 && badField(form, 'reason', 'reason_required');
+// A number typed with Latin, Arabic or Persian digits; NaN when the field is empty or not a number.
+function typedNumber(v) {
+  const s = String(v == null ? '' : v).trim().replace(/[\u0660-\u0669]/g, c => c.charCodeAt(0) - 0x0660).replace(/[\u06F0-\u06F9]/g, c => c.charCodeAt(0) - 0x06F0).replace('\u066B', '.');
+  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+}
+F.correct = async (d, form) => {
   const m = S.modal;
-  const payload = m.what === 'attempt' ? { kind: 'attempt', id: m.id, value: d.value, reason: d.reason } : { kind: 'section', id: d.id, userId: m.userId, value: true, reason: d.reason };
+  const score = m.what === 'attempt' ? typedNumber(d.value) : null;
+  if (m.what === 'attempt' && !(score >= 0 && score <= 100)) { badField(form, 'value', 'score_required'); return; }
+  if (reasonMissing(form, d.reason)) return;
+  const payload = m.what === 'attempt' ? { kind: 'attempt', id: m.id, value: score, reason: d.reason } : { kind: 'section', id: d.id, userId: m.userId, value: true, reason: d.reason };
   const r = await call(() => api.correctRecord(S.userId, payload), t('correction_saved'));
   if (r) { if (r.certificate) toast(t('cert_earned'), 'good'); closeModal(); render(); }
 };
@@ -228,13 +246,16 @@ MODALS.extraAttempts = m => {
     title: t('extra_attempts'),
     body: `<form id="extra-form" data-form="extraAttempts" class="stack">${who}
       ${field(t('exam'), select('examId', opts, first.id, { id: 'xa-exam' }))}
-      ${field(t('extra_count'), input('count', 1, { type: 'number', min: 1, max: 10, im: 'numeric', id: 'xa-count' }), { hint: t('extra_attempts_hint') })}
+      ${field(t('extra_count'), input('count', 1, { im: 'numeric', dir: 'ltr', id: 'xa-count' }), { hint: t('extra_attempts_hint') })}
       ${field(t('reason'), textarea('reason', '', { rows: 3 }), { hint: t('reason_hint') })}</form>`,
     foot: `${btn(t('cancel'), 'closeModal')}<button class="btn primary" type="submit" form="extra-form">${t('save')}</button>`
   };
 };
-F.extraAttempts = async d => {
-  const r = await call(() => api.grantAttempts(S.userId, { userId: S.modal.userId, examId: d.examId, count: Number(d.count), reason: d.reason }));
+F.extraAttempts = async (d, form) => {
+  const count = typedNumber(d.count);
+  if (!(Number.isInteger(count) && count >= 1 && count <= 10)) { badField(form, 'count', 'extra_count_invalid'); return; }
+  if (reasonMissing(form, d.reason)) return;
+  const r = await call(() => api.grantAttempts(S.userId, { userId: S.modal.userId, examId: d.examId, count, reason: d.reason }));
   if (r) { closeModal(); toast(t('extra_added', { n: fmtNum(r.added) }), 'good'); render(); }
 };
 
@@ -545,7 +566,7 @@ MODALS.certAction = m => {
     foot: `${btn(t('cancel'), 'closeModal')}<button class="btn ${m.mode === 'revoke' ? 'danger' : 'primary'}" type="submit" form="ca-form">${m.mode === 'revoke' ? t('revoke') : t('reissue')}</button>`
   };
 };
-F.certAction = async d => { const m = S.modal; const r = await call(() => (m.mode === 'revoke' ? api.revokeCert(S.userId, m.certId, d.reason) : api.reissueCert(S.userId, m.certId, d.reason)), m.mode === 'revoke' ? t('revoked') : t('reissued')); if (r) { closeModal(); render(); } };
+F.certAction = async (d, form) => { const m = S.modal; if (reasonMissing(form, d.reason)) return; const r = await call(() => (m.mode === 'revoke' ? api.revokeCert(S.userId, m.certId, d.reason) : api.reissueCert(S.userId, m.certId, d.reason)), m.mode === 'revoke' ? t('revoked') : t('reissued')); if (r) { closeModal(); render(); } };
 
 /* ---------------- reports ---------------- */
 PAGES.reports = () => {

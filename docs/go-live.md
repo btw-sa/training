@@ -65,6 +65,10 @@ An Arabic step-by-step version of this guide is kept with the project documents.
 - **Code changes** pushed to `main` republish the website automatically. If a change touches
   `web/src/core.js` or `server/`, run `npm run build` and update the function (paste the new
   `index.ts` with **Deploy updates**, or run the **Update server function** workflow).
+- **Someone used all their exam attempts:** **People** → the person → **Extra attempts** on the
+  course row → choose the exam, how many attempts to add, and a reason. It applies to that person
+  only; the exam's own limit (set in the quiz editor) stays the same for everyone else. They get a
+  notification, and the addition is listed under **Record corrections** and in the audit log.
 - **Backups:** the database keeps the last 10 saves plus one per day for 14 days
   (`app_state_history`; undo steps are at the end of `setup.sql`). Download **Backups and data →
   Full export** monthly and keep it somewhere private. The paid Supabase Pro plan adds daily
